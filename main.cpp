@@ -8,7 +8,7 @@
 
 
 roulette_state_t current_state;
-int last_button_release_period = 0; //period in ms
+int last_button_release_period = 0; //period in ms when the button was realsed. This is used to determine how long the ball goes around
 
 Serial pc(USBTX,USBRX);
 InterruptIn button(USER_BUTTON);
@@ -36,7 +36,7 @@ int calculate_speed_period(){
 	case SLOWING_DOWN:
 	{
 		int elapsed_time = state_timer.read_ms();
-		return last_button_release_period + elapsed_time*DECELERATION_SLOPE;
+		return (last_button_release_period + elapsed_time*DECELERATION_SLOPE);
 	}
 	default: //Error speed unknown when obstacle hit
 		return -1;
@@ -45,8 +45,9 @@ int calculate_speed_period(){
 
 
 //Function called when button is pressed
-//Start spinning the roulette ball
+//Start speeding up the roulette ball
 //Longer the button is pressed the faster the ball moves
+//Should only react when the state is IDLE or IN_SLOT
 void button_pressed(){
 	if ((current_state == IN_SLOT)||(current_state == IDLE)){
 		current_state = BUTTON_PRESSED;
@@ -60,6 +61,8 @@ void button_pressed(){
 
 //Function called when button is released
 //Start slowing down the roulette ball
+//Only do something if alread in Button pressed state
+//ToDo: If the button released function is not called then will be stuck indefinitely in the wrong state: Add reset functionality if pressed and not released for a long time e.g. 20-30 seconds.
 void button_released(){
 	if(current_state == BUTTON_PRESSED){
 		last_button_release_period = calculate_speed_period();
@@ -72,6 +75,10 @@ void button_released(){
 		pc.printf("Button can only be relesed in BUTTON_PRESSED state\n");
 }
 
+
+//Calulates board_select pin and led_select pin based on ball position
+//Turns on the baord/led pins correctly
+//ToDo: Modify this function based on how board_select/led_select is connected
 void draw_ball_position(int i){
 
 	pc.printf("Drawing R %d\n", i);
@@ -106,6 +113,7 @@ int update_ball_position(){
 		return -1;
 
 	if (current_state == SLOWING_DOWN){
+		//Check if simulating of ball hitting obstacle should be done
 		if (period > MIN_SPEED_PERIOD){
 			state_timer.stop();
 			int ball_jump = rand()*BALL_JUMP*2/RAND_MAX - BALL_JUMP;
@@ -114,6 +122,7 @@ int update_ball_position(){
 		}
 	}
 	//else if period == 0 then no change in ball position i.e. speed = 0
+
 	draw_ball_position(last_ball_position);
 	update_timer.reset();
 	return last_ball_position;
@@ -132,7 +141,8 @@ int main() {
     current_state = IDLE;
     while (true) {
         pc.printf("Updating roulette display\n");
-        update_ball_position();
+        if(update_ball_position() == -1)
+        	pc.printf("Error in updating ball position");
         Thread::wait(UPDATE_INTERVAL);
     }
 }
